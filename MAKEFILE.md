@@ -44,10 +44,12 @@ sudo ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
 
 ## Mount NAS
 - `sudo apt install cifs-utils`
+- Create the mount point (replace the placeholder with the local directory name): `sudo mkdir -p /mnt/nas/<shared-storage>` (here /mnt/nas/homelab)
+- Store the NAS account credentials in the credentials file (and a domain if required by the NAS). Restrict access to it: `chmod 600 /home/<user>/Documents/homelab/.credentials/.smbcredentials`
 - add the mount to /etc/fstab:
 ```shell
 sudo nano /etc/fstab
-//NAS-IP/home /mnt/nas/<shared-storage> cifs credentials=/home/<user>/Documents/homelab/.smbcredentials,uid=1000,gid=1000,vers=3.0,nofail
+//<NAS-IP>/home /mnt/nas/homelab cifs credentials=/home/<user>/Documents/homelab/.credentials/.smbcredentials,uid=1000,gid=1000,vers=3.0,nofail
 ```
 - `sudo mount -a`
 
@@ -58,14 +60,6 @@ sudo sed -i "s/#DNSStubListener=yes/DNSStubListener=no/" /etc/systemd/resolved.c
 systemctl daemon-reload
 sudo systemctl restart systemd-resolved
 ```
-
-## Backup
-Setup the automatic backup cron:
-```shell
-crontab -e
-```
-Add the following task to the crontab file:
-`0 1 * * * sh ~/Documents/homelab/backup_script.sh`
 
 ## Cockpit
 Install Cockpit to monitor system upgrades
