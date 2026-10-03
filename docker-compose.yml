@@ -1,0 +1,202 @@
+services:
+  ## Administration ##
+  # --- Gestionnaire Docker (Portainer) ---
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${ROOT_DIR}/portainer/portainer_data:/data
+    ports:
+      - "9000:9000"
+
+  # --- Page d'accueil (Homer) ---
+  homer:
+    image: b4bz/homer
+    container_name: homer
+    restart: unless-stopped
+    volumes:
+      - ${ROOT_DIR}/homer/assets:/www/assets
+    ports:
+      - "80:8080" # Homer prend le port 80 (HTTP standard)
+    user: "${PUID}:${PGID}" # Replace with your local user ID
+
+  # --- Monitoring (Glances) ---
+  glances:
+    image: nicolargo/glances:latest
+    container_name: glances
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - GLANCES_OPT=-w
+      - TZ=${TZ}
+    ports:
+      - "61208:61208"
+
+  # --- Bloqueur de Pub (AdGuard Home) ---
+  adguardhome:
+    image: adguard/adguardhome
+    container_name: adguardhome
+    restart: unless-stopped
+    ports:
+      - "53:53/tcp" # DNS
+      - "53:53/udp" # DNS
+      - "3000:80/tcp" # Interface Web d'Install (Port 3000 pour éviter conflit avec Homer)
+      - "3001:3000/tcp" # Sécurité
+    volumes:
+      - ${ROOT_DIR}/adguard/adguard_work:/opt/adguardhome/work
+      - ${ROOT_DIR}/adguard/adguard_conf:/opt/adguardhome/conf
+
+  # --- Multimédia (Jellyfin) ---
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    # network_mode: host # Optionnel : Utile pour le DLNA, mais consomme les ports de l'hôte
+    ports:
+      - "8096:8096"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${ROOT_DIR}/jellyfin/jellyfin_config:/config
+      - ${ROOT_DIR}/jellyfin/jellyfin_cache:/cache
+      - ${MEDIA_DIR}/media:/media # ICI : On mappe ton montage NAS vers le dossier /media du conteneur
+    devices:
+      - /dev/dri:/dev/dri # Active l'accélération matérielle du processeur Intel
+
+  # --- Navidrome ---
+  navidrome:
+    image: deluan/navidrome:latest
+    container_name: navidrome
+    user: 1000:1000 # should be owner of volumes
+    ports:
+      - "4533:4533"
+    restart: unless-stopped
+    environment:
+      # Optional: put your config options customization here. Examples:
+      # ND_LOGLEVEL: debug
+      ND_BASEURL: "https://navidrome.example.com"
+    volumes:
+      - "${ROOT_DIR}/navidrome/data:/data"
+      - "${MEDIA_DIR}/Music:/music:ro"
+
+  # --- Mises à jour auto (Watchtower) ---
+  watchtower:
+    image: nickfedor/watchtower:latest
+    container_name: watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  ## SECURITE ##
+  # --- Accès distant (Cloudflare Tunnel) ---
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+
+  ## MUSIQUE ##
+
+  # --- Gestionnaire Musique (Lidarr) ---
+  lidarr:
+    image: ghcr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${ROOT_DIR}/lidarr:/config
+      - ${ROOT_DIR}/slskd/downloads:/downloads
+      - ${MEDIA_DIR}/Music:/music
+    ports:
+      - "8686:8686"
+
+  # --- Soulseek slskd ---
+  slskd:
+    image: slskd/slskd:latest
+    container_name: slskd
+    restart: unless-stopped
+    environment:
+      # Pour activer la configuration distante et le login depuis l'extérieur si besoin
+      - SLSKD_REMOTE_CONFIGURATION=true
+      # Username/Password à mettre dans .env
+      - SLSKD_SHARED_DIR=/music
+      - SLSKD_SLSK_USERNAME=${SOULSEEK_USER}
+      - SLSKD_SLSK_PASSWORD=${SOULSEEK_PASS}
+    ports:
+      - "5030:5030/tcp"   # Port principal TCP
+      - "5031:5031/tcp"   # Port secondaire TCP
+      - "50300:50300/tcp" # Port data TCP
+    volumes:
+      - ${ROOT_DIR}/slskd:/app:rw      # Config et fichiers internes de slskd
+      - ${MEDIA_DIR}/Music:/music:rw  # Dossier pour télécharger et partager la musique
+    user: 1000:1000   # UID:GID correspondant à ton utilisateur Ubuntu
+
+  # --- Soularr ---
+  soularr:
+    image: mrusse08/soularr:latest
+    container_name: soularr
+    depends_on:
+      - lidarr
+      - slskd
+    user: 1000:1000 # this should be set to your UID and GID
+    environment:
+      - TZ=${TZ}
+      - SCRIPT_INTERVAL=300 # Script interval in seconds
+    volumes:
+      # "You can set /downloads to whatever you want but will then need to change the Slskd download dir in your config file"
+      - ${ROOT_DIR}/slskd/downloads:/downloads
+      # Select where you are storing your config file.
+      # Leave "/data" since thats where the script expects the config file to be
+      - ${ROOT_DIR}/soularr:/data
+    restart: unless-stopped
+
+  # --- Feishin ---
+  feishin:
+    image: ghcr.io/jeffvli/feishin:latest
+    container_name: feishin
+    environment:
+      - SERVER_NAME=navidrome # pre-defined server name
+      - SERVER_LOCK=true # When true AND name/type/url are set, only username/password can be toggled
+      - SERVER_TYPE=navidrome
+      - SERVER_URL=https://navidrome.example.com
+      - REMOTE_URL=https://navidrome.example.com
+      - LEGACY_AUTHENTICATION=false # When SERVER_LOCK is true, sets the legacy (plaintext) authentication flag for Subsonic/OpenSubsonic servers
+      - ANALYTICS_DISABLED=true # Set to true to disable Umami analytics tracking
+    ports:
+      - "9180:9180"
+    volumes:
+      - ${ROOT_DIR}/feishin:/root/.config/feishin
+    restart: unless-stopped
+
+  # --- NextCloud AIO ---
+  nextcloud-aio-mastercontainer:
+    image: ghcr.io/nextcloud-releases/all-in-one:latest
+    container_name: nextcloud-aio-mastercontainer
+    init: true
+    restart: always
+    volumes:
+      - nextcloud_aio_mastercontainer:/mnt/docker-aio-config
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - NEXTCLOUD_MOUNT=/mnt/nas/<shared-storage>/nextcloud
+      - SKIP_DOMAIN_VALIDATION=true
+      - APACHE_PORT=11000
+    ports:
+      - "8082:8080"
+
+volumes:
+  nextcloud_aio_mastercontainer:
+    name: nextcloud_aio_mastercontainer
