@@ -119,9 +119,73 @@ services:
     volumes:
       - ${ROOT_DIR}/lidarr:/config
       - ${ROOT_DIR}/slskd/downloads:/downloads
+      - ${MEDIA_DIR}:/data
       - ${MEDIA_DIR}/Music:/music
     ports:
       - "8686:8686"
+
+  # --- Gestionnaire Films (Radarr) ---
+  radarr:
+    image: ghcr.io/linuxserver/radarr:latest
+    container_name: radarr
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${ROOT_DIR}/radarr:/config
+      - ${MEDIA_DIR}:/data
+    ports:
+      - "7878:7878"
+
+  # --- Gestionnaire Séries (Sonarr) ---
+  sonarr:
+    image: ghcr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${ROOT_DIR}/sonarr:/config
+      - ${MEDIA_DIR}:/data
+    ports:
+      - "8989:8989"
+
+  # --- Gestionnaire d'Indexeurs (Prowlarr) ---
+  prowlarr:
+    image: ghcr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${ROOT_DIR}/prowlarr:/config
+    ports:
+      - "9696:9696"
+
+  # --- Client BitTorrent (qBittorrent) ---
+  qbittorrent:
+    image: ghcr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - WEBUI_PORT=8080
+      - TORRENTING_PORT=6881
+    volumes:
+      - ${ROOT_DIR}/qbittorrent:/config
+      - ${MEDIA_DIR}:/data
+    ports:
+      - "8080:8080"
+      - "6881:6881"
+      - "6881:6881/udp"
 
   # --- Soulseek slskd ---
   slskd:
