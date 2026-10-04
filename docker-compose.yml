@@ -104,6 +104,8 @@ services:
     command: tunnel run
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    networks:
+      - tunnel
 
   ## MUSIQUE ##
 
@@ -244,3 +246,8 @@ services:
     volumes:
       - ${ROOT_DIR}/feishin:/root/.config/feishin
     restart: unless-stopped
+
+networks:
+  tunnel:
+    external: true
+    name: cloudflare-tunnel
